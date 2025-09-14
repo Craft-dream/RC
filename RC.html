@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>触屏版MC风格游戏 - 摇杆修复</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            user-select: none;
+            touch-action: none;
+        }
+        
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #000;
+            position: fixed;
+            width: 100%;
+            height: 100%;
+        }
+        
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 8px;
+            height: 8px;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 50%;
+            pointer-events: none;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.7);
+        }
+        
+        /* 虚拟摇杆 - 完全重写 */
+        #joystick-container {
+            position: absolute;
+            bottom: 120px;
+            left: 30px;
+            width: 120px;
+            height: 120px;
+            pointer-events: none;
+        }
+        
+        #joystick-base {
+            position: absolute;
+            width: 80px;
+            height: 80px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            pointer-events: all;
+            top: 20px; /* 调整位置 */
+            left: 20px;
+        }
+        
+        #joystick-handle {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 50%;
+            top: 40px; /* 中心位置 */
+            left: 40px; /* 中心位置 */
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+            transition: transform 0.1s ease;
+        }
+        
+        /* 视角控制区域 */
+        #look-area {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 50%;
+            height: 70%;
+            pointer-events: all;
+        }
+        
+        /* 动作按钮 */
+        #action-buttons {
+            position: absolute;
+            bottom: 130px;
+            right: 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .action-btn {
+            width: 70px;
+            height: 70px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            font-size: 24px;
+            color: white;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+        }
+        
+        .action-btn:active {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(0.95);
+        }
+        
+        /* 物品栏 */
+        #inventory {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 12px;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.6);
+            border-radius: 20px;
+            backdrop-filter: blur(15px);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            max-width: 90%;
+            overflow-x: auto;
+        }
+        
+        .inventory-slot {
+            width: 60px;
+            height: 60px;
+            background: rgba(255, 255, 255, 0.15);
+            border: 2px solid rgba(255, 255, 255, 0.25);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+        
+        .inventory-slot.selected {
+            border-color: #4CAF50;
+            background: rgba(76, 175, 80, 0.25);
+            transform: scale(1.15);
+        }
+        
+        .block-preview {
+            width: 35px;
+            height: 35px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .rounded-preview {
+            width: 25px;
+            height: 25px;
+            background: linear-gradient(45deg, #7CFC00, #32CD32);
+            border-radius: 50%;
+            box-shadow: 0 0 8px rgba(124, 252, 0, 0.6);
+        }
+        
+        .square-preview {
+            width: 22px;
+            height: 22px;
+            background: linear-gradient(45deg, #8B4513, #A0522D);
+            box-shadow: 0 0 8px rgba(139, 69, 19, 0.6);
+        }
+        
+        .rock-preview {
+            width: 25px;
+            height: 25px;
+            background: linear-gradient(45deg, #888888, #AAAAAA);
+            border-radius: 35%;
+            box-shadow: 0 0 8px rgba(136, 136, 136, 0.6);
+        }
+        
+        /* 状态信息 */
+        #selected-info {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 12px 24px;
+            border-radius: 15px;
+            text-align: center;
+            backdrop-filter: blur(15px);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            font-size: 14px;
+            max-width: 90%;
+        }
+        
+        /* 开始屏幕 */
+        #start-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(20px);
+            z-index: 1000;
+        }
+        
+        #start-button {
+            padding: 20px 40px;
+            background: linear-gradient(45deg, #4CAF50, #45a049);
+            border: none;
+            border-radius: 25px;
+            color: white;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 0 30px rgba(76, 175, 80, 0.5);
+            transition: all 0.3s ease;
+        }
+        
+        #start-button:active {
+            transform: scale(0.95);
+        }
+        
+        /* 加载屏幕 */
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 18px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div id="crosshair"></div>
+    
+    <!-- 虚拟控制 -->
+    <div id="joystick-container">
+        <div id="joystick-base"></div>
+        <div id="joystick-handle"></div>
+    </div>
+    
+    <div id="look-area"></div>
+    
+    <div id="action-buttons">
+        <div class="action-btn" id="jump-btn">↑</div>
+        <div class="action-btn" id="mine-btn">⛏️</div>
+        <div class="action-btn" id="place-btn">🔄</div>
+    </div>
+    
+    <div id="inventory">
+        <!-- 物品栏会在JavaScript中动态生成 -->
+    </div>
+    
+    <div id="selected-info">点击开始按钮开始游戏</div>
+    
+    <div id="start-screen">
+        <button id="start-button">开始游戏</button>
+        <p style="color: white; margin-top: 20px; text-align: center;">
+            使用左侧摇杆移动，右侧区域控制视角<br>
+            点击按钮进行跳跃、挖掘和放置
+        </p>
+    </div>
+    
+    <div id="loading">正在加载圆润世界...</div>
+
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script>
+        class TouchScreenGame {
+            constructor() {
+                this.init();
+                this.setupControls();
+                this.createWorld();
+                this.setupInventory();
+                this.animate();
+                document.getElementById('loading').style.display = 'none';
+            }
+
+            init() {
+                // 初始化场景
+                this.scene = new THREE.Scene();
+                this.scene.background = new THREE.Color(0x87CEEB);
+                this.scene.fog = new THREE.Fog(0x87CEEB, 20, 50);
+
+                // 初始化相机
+                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+                this.camera.position.set(0, 8, 12);
+                this.camera.rotation.set(0, 0, 0);
+
+                // 初始化渲染器
+                this.renderer = new THREE.WebGLRenderer({ 
+                    antialias: true,
+                    alpha: true
+                });
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                this.renderer.shadowMap.enabled = true;
+                document.body.appendChild(this.renderer.domElement);
+
+                // 光源系统
+                this.setupLighting();
+
+                // 材质系统
+                this.materials = {
+                    grass: new THREE.MeshStandardMaterial({ color: 0x7CFC00, roughness: 0.7 }),
+                    rock: new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.9 }),
+                    wood: new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.6 })
+                };
+
+                // 游戏状态
+                this.worldObjects = [];
+                this.collisionObjects = [];
+                this.selectedObject = null;
+                this.moveDirection = new THREE.Vector2(0, 0);
+                this.velocity = new THREE.Vector3();
+                this.onGround = false;
+
+                // 玩家设置
+                this.playerHeight = 1.8;
+                this.playerRadius = 0.4;
+                this.eyeHeight = 1.6;
+                this.moveSpeed = 4;
+                this.lookSensitivity = 0.002;
+                this.gravity = 25;
+                this.jumpForce = 8;
+
+                // 物品栏
+                this.selectedBlockType = 'rounded_grass';
+                this.selectedSlot = 0;
+
+                // 控制状态
+                this.joystickActive = false;
+                this.lookActive = false;
+                this.lastTouchX = 0;
+                this.lastTouchY = 0;
+                this.joystickMaxDistance = 35;
+
+                // 视角控制
+                this.pitch = 0;
+                this.yaw = 0;
+
+                // 摇杆中心位置（固定值）
+                this.joystickBaseX = 60; // joystick-base的left(20) + width/2(40)
+                this.joystickBaseY = 60; // joystick-base的top(20) + height/2(40)
+            }
+
+            setupLighting() {
+                const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+                this.scene.add(ambientLight);
+
+                const sunLight = new THREE.DirectionalLight(0xFFFBE0, 1.2);
+                sunLight.position.set(50, 50, 25);
+                sunLight.castShadow = true;
+                this.scene.add(sunLight);
+            }
+
+            setupControls() {
+                const joystickBase = document.getElementById('joystick-base');
+                const joystickHandle = document.getElementById('joystick-handle');
+                const lookArea = document.getElementById('look-area');
+
+                // 摇杆触摸控制 - 简化版本
+                joystickBase.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    this.joystickActive = true;
+                    
+                    const touch = e.touches[0];
+                    const rect = joystickBase.getBoundingClientRect();
+                    const baseCenterX = rect.left + rect.width / 2;
+                    const baseCenterY = rect.top + rect.height / 2;
+                    
+                    // 计算相对于摇杆中心的偏移
+                    const offsetX = touch.clientX - baseCenterX;
+                    const offsetY = touch.clientY - baseCenterY;
+                    
+                    this.updateJoystickPosition(offsetX, offsetY);
+                });
+
+                joystickBase.addEventListener('touchmove', (e) => {
+                    if (!this.joystickActive) return;
+                    
+                    const touch = e.touches[0];
+                    const rect = joystickBase.getBoundingClientRect();
+                    const baseCenterX = rect.left + rect.width / 2;
+                    const baseCenterY = rect.top + rect.height / 2;
+                    
+                    const offsetX = touch.clientX - baseCenterX;
+                    const offsetY = touch.clientY - baseCenterY;
+                    
+                    this.updateJoystickPosition(offsetX, offsetY);
+                });
+
+                joystickBase.addEventListener('touchend', (e) => {
+                    this.joystickActive = false;
+                    this.moveDirection.set(0, 0);
+                    joystickHandle.style.transform = 'translate(0, 0)';
+                });
+
+                joystickBase.addEventListener('touchcancel', (e) => {
+                    this.joystickActive = false;
+                    this.moveDirection.set(0, 0);
+                    joystickHandle.style.transform = 'translate(0, 0)';
+                });
+
+                // 视角控制
+                lookArea.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    this.lookActive = true;
+                    this.lastTouchX = e.touches[0].clientX;
+                    this.lastTouchY = e.touches[0].clientY;
+                });
+
+                lookArea.addEventListener('touchmove', (e) => {
+                    if (!this.lookActive) return;
+                    
+                    const touch = e.touches[0];
+                    const deltaX = touch.clientX - this.lastTouchX;
+                    const deltaY = touch.clientY - this.lastTouchY;
+                    
+                    this.yaw -= deltaX * this.lookSensitivity;
+                    this.pitch = Math.max(
+                        Math.min(this.pitch - deltaY * this.lookSensitivity, Math.PI / 2 - 0.1),
+                        -Math.PI / 2 + 0.1
+                    );
+                    
+                    this.camera.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
+                    
+                    this.lastTouchX = touch.clientX;
+                    this.lastTouchY = touch.clientY;
+                });
+
+                lookArea.addEventListener('touchend', (e) => {
+                    this.lookActive = false;
+                });
+
+                // 动作按钮
+                document.getElementById('jump-btn').addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    if (this.onGround) {
+                        this.velocity.y = this.jumpForce;
+                        this.onGround = false;
+                    }
+                });
+
+                document.getElementById('mine-btn').addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    this.mineObject();
+                });
+
+                document.getElementById('place-btn').addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    this.placeObject();
+                });
+
+                // 开始按钮
+                document.getElementById('start-button').addEventListener('click', () => {
+                    document.getElementById('start-screen').style.display = 'none';
+                    document.getElementById('selected-info').textContent = '游戏开始！使用摇杆移动';
+                });
+
+                // 物品栏点击
+                document.addEventListener('touchstart', (e) => {
+                    if (e.target.closest('.inventory-slot')) {
+                        e.preventDefault();
+                        const slot = e.target.closest('.inventory-slot');
+                        const index = parseInt(slot.dataset.index);
+                        this.selectInventorySlot(index);
+                    }
+                });
+            }
+
+            updateJoystickPosition(offsetX, offsetY) {
+                const joystickHandle = document.getElementById('joystick-handle');
+                
+                // 计算距离
+                const distance = Math.sqrt(offsetX * offsetX + offsetY * offsetY);
+                const maxDistance = this.joystickMaxDistance;
+                
+                if (distance > maxDistance) {
+                    // 限制在最大距离内
+                    const angle = Math.atan2(offsetY, offsetX);
+                    offsetX = Math.cos(angle) * maxDistance;
+                    offsetY = Math.sin(angle) * maxDistance;
+                }
+                
+                // 更新摇杆手柄位置
+                joystickHandle.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
+                
+                // 更新移动方向（归一化）
+                this.moveDirection.set(
+                    offsetX / maxDistance,
+                    offsetY / maxDistance
+                );
+            }
+
+            setupInventory() {
+                this.inventory = [
+                    { type: 'rounded_grass', name: '圆润草方块', count: 99, icon: 'rounded' },
+                    { type: 'rounded_rock', name: '圆润石头', count: 99, icon: 'rock' },
+                    { type: 'square_wood', name: '方形木头', count: 99, icon: 'square' }
+                ];
+
+                const inventoryElement = document.getElementById('inventory');
+                inventoryElement.innerHTML = '';
+
+                this.inventory.forEach((item, index) => {
+                    const slot = document.createElement('div');
+                    slot.className = 'inventory-slot';
+                    slot.dataset.index = index;
+                    slot.dataset.type = item.type;
+
+                    const preview = document.createElement('div');
+                    preview.className = 'block-preview';
+
+                    const icon = document.createElement('div');
+                    icon.className = `${item.icon}-preview`;
+
+                    preview.appendChild(icon);
+                    slot.appendChild(preview);
+
+                    inventoryElement.appendChild(slot);
+                });
+
+                this.selectInventorySlot(0);
+            }
+
+            selectInventorySlot(index) {
+                document.querySelectorAll('.inventory-slot').forEach((slot, i) => {
+                    slot.classList.toggle('selected', i === index);
+                });
+                this.selectedSlot = index;
+                this.selectedBlockType = this.inventory[index].type;
+                document.getElementById('selected-info').textContent = this.inventory[index].name;
+            }
+
+            createWorld() {
+                this.createSmoothTerrain();
+                this.createRoundedObjects();
+            }
+
+            createSmoothTerrain() {
+                const geometry = new THREE.PlaneGeometry(50, 50, 32, 32);
+                const material = new THREE.MeshStandardMaterial({
+                    color: 0x4CAF50,
+                    roughness: 0.8
+                });
+                
+                const terrain = new THREE.Mesh(geometry, material);
+                terrain.rotation.x = -Math.PI / 2;
+                terrain.position.y = -1;
+                terrain.receiveShadow = true;
+                this.scene.add(terrain);
+            }
+
+            createRoundedObjects() {
+                const objects = [
+                    { type: 'rock', position: new THREE.Vector3(5, 0, 5), scale: 1.5 },
+                    { type: 'grass', position: new THREE.Vector3(-5, 0, 5), scale: 1.2 },
+                    { type: 'wood', position: new THREE.Vector3(5, 0, -5), scale: 1.0 }
+                ];
+
+                objects.forEach((obj, index) => {
+                    this.createObject(obj.type, obj.position, obj.scale, index);
+                });
+            }
+
+            createObject(type, position, scale, id) {
+                let geometry = new THREE.SphereGeometry(0.5, 16, 16);
+                if (type === 'rock') geometry = new THREE.DodecahedronGeometry(0.5, 1);
+                if (type === 'wood') geometry = new THREE.CylinderGeometry(0.3, 0.4, 1, 12);
+
+                const material = this.materials[type];
+                const mesh = new THREE.Mesh(geometry, material);
+                
+                mesh.position.copy(position);
+                mesh.scale.set(scale, scale, scale);
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                
+                mesh.userData = { id, type, position: position.clone(), scale };
+
+                this.scene.add(mesh);
+                this.worldObjects.push(mesh);
+                this.collisionObjects.push({ mesh, position: position.clone(), radius: scale * 0.8 });
+            }
+
+            updatePlayer(delta) {
+                // 移动控制
+                if (this.moveDirection.length() > 0.1) {
+                    const moveSpeed = this.moveSpeed * delta;
+                    
+                    const forward = new THREE.Vector3(
+                        -Math.sin(this.yaw),
+                        0,
+                        -Math.cos(this.yaw)
+                    ).normalize();
+                    
+                    const right = new THREE.Vector3(
+                        Math.cos(this.yaw),
+                        0,
+                        -Math.sin(this.yaw)
+                    ).normalize();
+                    
+                    const moveVector = new THREE.Vector3()
+                        .addScaledVector(forward, -this.moveDirection.y)
+                        .addScaledVector(right, this.moveDirection.x);
+                    
+                    moveVector.normalize().multiplyScalar(moveSpeed);
+                    
+                    const newPosition = this.camera.position.clone().add(moveVector);
+                    if (!this.checkCollision(newPosition)) {
+                        this.camera.position.copy(newPosition);
+                    }
+                }
+
+                // 重力物理
+                this.velocity.y -= this.gravity * delta;
+                this.camera.position.y += this.velocity.y * delta;
+
+                // 地面检测
+                if (this.camera.position.y <= this.eyeHeight) {
+                    this.camera.position.y = this.eyeHeight;
+                    this.onGround = true;
+                    this.velocity.y = 0;
+                } else {
+                    this.onGround = false;
+                }
+
+                this.updateSelectedObject();
+            }
+
+            mineObject() {
+                if (this.selectedObject) {
+                    this.scene.remove(this.selectedObject);
+                    this.worldObjects = this.worldObjects.filter(obj => obj !== this.selectedObject);
+                    this.collisionObjects = this.collisionObjects.filter(coll => coll.mesh !== this.selectedObject);
+                    this.selectedObject = null;
+                    document.getElementById('selected-info').textContent = '方块已挖掘';
+                }
+            }
+
+            placeObject() {
+                const direction = new THREE.Vector3(
+                    -Math.sin(this.yaw) * Math.cos(this.pitch),
+                    -Math.sin(this.pitch),
+                    -Math.cos(this.yaw) * Math.cos(this.pitch)
+                ).normalize();
+                
+                const spawnPos = new THREE.Vector3(
+                    this.camera.position.x + direction.x * 3,
+                    0,
+                    this.camera.position.z + direction.z * 3
+                );
+
+                if (!this.checkCollision(spawnPos)) {
+                    const blockType = this.selectedBlockType.replace('rounded_', '').replace('square_', '');
+                    this.createObject(blockType, spawnPos, 1, Date.now());
+                    document.getElementById('selected-info').textContent = `放置了${blockType}方块`;
+                }
+            }
+
+            checkCollision(position) {
+                for (const collider of this.collisionObjects) {
+                    const dx = position.x - collider.position.x;
+                    const dz = position.z - collider.position.z;
+                    const distance = Math.sqrt(dx * dx + dz * dz);
+                    if (distance < this.playerRadius + collider.radius) return true;
+                }
+                return false;
+            }
+
+            updateSelectedObject() {
+                const direction = new THREE.Vector3(
+                    -Math.sin(this.yaw) * Math.cos(this.pitch),
+                    -Math.sin(this.pitch),
+                    -Math.cos(this.yaw) * Math.cos(this.pitch)
+                ).normalize();
+                
+                const raycaster = new THREE.Raycaster(this.camera.position, direction);
+                const intersects = raycaster.intersectObjects(this.worldObjects);
+                
+                if (intersects.length > 0) {
+                    this.selectedObject = intersects[0].object;
+                } else {
+                    this.selectedObject = null;
+                }
+            }
+
+            animate() {
+                const animateLoop = () => {
+                    requestAnimationFrame(animateLoop);
+                    const delta = Math.min(0.016, 0.1);
+                    this.updatePlayer(delta);
+                    this.renderer.render(this.scene, this.camera);
+                };
+                animateLoop();
+            }
+        }
+
+        // 启动游戏
+        window.addEventListener('load', () => {
+            new TouchScreenGame();
+        });
+    </script>
+</body>
+</html>
