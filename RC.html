@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>触屏版MC风格游戏 - 摇杆修复</title>
+    <title>触屏版MC风格游戏 - 触摸冲突修复</title>
     <style>
         * {
             margin: 0;
@@ -45,7 +45,7 @@
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.7);
         }
         
-        /* 虚拟摇杆 - 完全重写 */
+        /* 虚拟摇杆 */
         #joystick-container {
             position: absolute;
             bottom: 120px;
@@ -64,7 +64,7 @@
             backdrop-filter: blur(10px);
             border: 2px solid rgba(255, 255, 255, 0.3);
             pointer-events: all;
-            top: 20px; /* 调整位置 */
+            top: 20px;
             left: 20px;
         }
         
@@ -74,8 +74,8 @@
             height: 40px;
             background: rgba(255, 255, 255, 0.9);
             border-radius: 50%;
-            top: 40px; /* 中心位置 */
-            left: 40px; /* 中心位置 */
+            top: 40px;
+            left: 40px;
             box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
             transition: transform 0.1s ease;
         }
@@ -345,20 +345,16 @@
                 this.selectedBlockType = 'rounded_grass';
                 this.selectedSlot = 0;
 
-                // 控制状态
-                this.joystickActive = false;
-                this.lookActive = false;
-                this.lastTouchX = 0;
-                this.lastTouchY = 0;
-                this.joystickMaxDistance = 35;
-
                 // 视角控制
                 this.pitch = 0;
                 this.yaw = 0;
 
-                // 摇杆中心位置（固定值）
-                this.joystickBaseX = 60; // joystick-base的left(20) + width/2(40)
-                this.joystickBaseY = 60; // joystick-base的top(20) + height/2(40)
+                // 触摸状态
+                this.joystickTouchId = null;
+                this.lookTouchId = null;
+                this.lastLookX = 0;
+                this.lastLookY = 0;
+                this.joystickMaxDistance = 35;
             }
 
             setupLighting() {
@@ -376,78 +372,75 @@
                 const joystickHandle = document.getElementById('joystick-handle');
                 const lookArea = document.getElementById('look-area');
 
-                // 摇杆触摸控制 - 简化版本
-                joystickBase.addEventListener('touchstart', (e) => {
-                    e.preventDefault();
-                    this.joystickActive = true;
-                    
-                    const touch = e.touches[0];
-                    const rect = joystickBase.getBoundingClientRect();
-                    const baseCenterX = rect.left + rect.width / 2;
-                    const baseCenterY = rect.top + rect.height / 2;
-                    
-                    // 计算相对于摇杆中心的偏移
-                    const offsetX = touch.clientX - baseCenterX;
-                    const offsetY = touch.clientY - baseCenterY;
-                    
-                    this.updateJoystickPosition(offsetX, offsetY);
+                // 全局触摸事件处理
+                document.addEventListener('touchstart', (e) => {
+                    for (let i = 0; i < e.changedTouches.length; i++) {
+                        const touch = e.changedTouches[i];
+                        const rect = joystickBase.getBoundingClientRect();
+                        
+                        // 检查是否在摇杆区域内
+                        if (touch.clientX >= rect.left && touch.clientX <= rect.right &&
+                            touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
+                            if (this.joystickTouchId === null) {
+                                this.joystickTouchId = touch.identifier;
+                                this.handleJoystickStart(touch);
+                                e.preventDefault();
+                            }
+                        }
+                        // 检查是否在视角控制区域内
+                        else if (touch.clientX >= window.innerWidth / 2) {
+                            if (this.lookTouchId === null) {
+                                this.lookTouchId = touch.identifier;
+                                this.handleLookStart(touch);
+                                e.preventDefault();
+                            }
+                        }
+                    }
                 });
 
-                joystickBase.addEventListener('touchmove', (e) => {
-                    if (!this.joystickActive) return;
-                    
-                    const touch = e.touches[0];
-                    const rect = joystickBase.getBoundingClientRect();
-                    const baseCenterX = rect.left + rect.width / 2;
-                    const baseCenterY = rect.top + rect.height / 2;
-                    
-                    const offsetX = touch.clientX - baseCenterX;
-                    const offsetY = touch.clientY - baseCenterY;
-                    
-                    this.updateJoystickPosition(offsetX, offsetY);
+                document.addEventListener('touchmove', (e) => {
+                    for (let i = 0; i < e.changedTouches.length; i++) {
+                        const touch = e.changedTouches[i];
+                        
+                        if (touch.identifier === this.joystickTouchId) {
+                            this.handleJoystickMove(touch);
+                            e.preventDefault();
+                        }
+                        else if (touch.identifier === this.lookTouchId) {
+                            this.handleLookMove(touch);
+                            e.preventDefault();
+                        }
+                    }
                 });
 
-                joystickBase.addEventListener('touchend', (e) => {
-                    this.joystickActive = false;
-                    this.moveDirection.set(0, 0);
-                    joystickHandle.style.transform = 'translate(0, 0)';
+                document.addEventListener('touchend', (e) => {
+                    for (let i = 0; i < e.changedTouches.length; i++) {
+                        const touch = e.changedTouches[i];
+                        
+                        if (touch.identifier === this.joystickTouchId) {
+                            this.handleJoystickEnd();
+                            e.preventDefault();
+                        }
+                        else if (touch.identifier === this.lookTouchId) {
+                            this.handleLookEnd();
+                            e.preventDefault();
+                        }
+                    }
                 });
 
-                joystickBase.addEventListener('touchcancel', (e) => {
-                    this.joystickActive = false;
-                    this.moveDirection.set(0, 0);
-                    joystickHandle.style.transform = 'translate(0, 0)';
-                });
-
-                // 视角控制
-                lookArea.addEventListener('touchstart', (e) => {
-                    e.preventDefault();
-                    this.lookActive = true;
-                    this.lastTouchX = e.touches[0].clientX;
-                    this.lastTouchY = e.touches[0].clientY;
-                });
-
-                lookArea.addEventListener('touchmove', (e) => {
-                    if (!this.lookActive) return;
-                    
-                    const touch = e.touches[0];
-                    const deltaX = touch.clientX - this.lastTouchX;
-                    const deltaY = touch.clientY - this.lastTouchY;
-                    
-                    this.yaw -= deltaX * this.lookSensitivity;
-                    this.pitch = Math.max(
-                        Math.min(this.pitch - deltaY * this.lookSensitivity, Math.PI / 2 - 0.1),
-                        -Math.PI / 2 + 0.1
-                    );
-                    
-                    this.camera.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
-                    
-                    this.lastTouchX = touch.clientX;
-                    this.lastTouchY = touch.clientY;
-                });
-
-                lookArea.addEventListener('touchend', (e) => {
-                    this.lookActive = false;
+                document.addEventListener('touchcancel', (e) => {
+                    for (let i = 0; i < e.changedTouches.length; i++) {
+                        const touch = e.changedTouches[i];
+                        
+                        if (touch.identifier === this.joystickTouchId) {
+                            this.handleJoystickEnd();
+                            e.preventDefault();
+                        }
+                        else if (touch.identifier === this.lookTouchId) {
+                            this.handleLookEnd();
+                            e.preventDefault();
+                        }
+                    }
                 });
 
                 // 动作按钮
@@ -484,6 +477,62 @@
                         this.selectInventorySlot(index);
                     }
                 });
+            }
+
+            handleJoystickStart(touch) {
+                const joystickBase = document.getElementById('joystick-base');
+                const rect = joystickBase.getBoundingClientRect();
+                const baseCenterX = rect.left + rect.width / 2;
+                const baseCenterY = rect.top + rect.height / 2;
+                
+                const offsetX = touch.clientX - baseCenterX;
+                const offsetY = touch.clientY - baseCenterY;
+                
+                this.updateJoystickPosition(offsetX, offsetY);
+            }
+
+            handleJoystickMove(touch) {
+                const joystickBase = document.getElementById('joystick-base');
+                const rect = joystickBase.getBoundingClientRect();
+                const baseCenterX = rect.left + rect.width / 2;
+                const baseCenterY = rect.top + rect.height / 2;
+                
+                const offsetX = touch.clientX - baseCenterX;
+                const offsetY = touch.clientY - baseCenterY;
+                
+                this.updateJoystickPosition(offsetX, offsetY);
+            }
+
+            handleJoystickEnd() {
+                this.joystickTouchId = null;
+                this.moveDirection.set(0, 0);
+                document.getElementById('joystick-handle').style.transform = 'translate(0, 0)';
+            }
+
+            handleLookStart(touch) {
+                this.lastLookX = touch.clientX;
+                this.lastLookY = touch.clientY;
+            }
+
+            handleLookMove(touch) {
+                const deltaX = touch.clientX - this.lastLookX;
+                const deltaY = touch.clientY - this.lastLookY;
+                
+                // 更新视角
+                this.yaw -= deltaX * this.lookSensitivity;
+                this.pitch = Math.max(
+                    Math.min(this.pitch - deltaY * this.lookSensitivity, Math.PI / 2 - 0.1),
+                    -Math.PI / 2 + 0.1
+                );
+                
+                this.camera.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
+                
+                this.lastLookX = touch.clientX;
+                this.lastLookY = touch.clientY;
+            }
+
+            handleLookEnd() {
+                this.lookTouchId = null;
             }
 
             updateJoystickPosition(offsetX, offsetY) {
